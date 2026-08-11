@@ -207,10 +207,4 @@ public static class Program
         Console.WriteLine("2. Запустить сервер");
         Console.WriteLine("3. Остановить сервер");
         Console.WriteLine("4. Перезапустить сервер");
-        Console.WriteLine("5. Статус сервера");
-        Console.WriteLine("6. Просмотр логов");
-        Console.WriteLine("7. Резервная копия сервера");
-        Console.WriteLine("8. Резервное копирование всех серверов");
-        Console.WriteLine("9. Отправить RCON команду");
-        Console.WriteLine("10. Обновить сервер через SteamCMD");
-        Console
+        Console.WriteLine
