@@ -28,11 +28,12 @@ public static class Program
         monitor.Start();
 
         var backupService = new BackupService(basePath, logger);
+        var rconService = new RconService(logger);
 
         using var scheduler = new SchedulerService(manager, backupService, logger);
         scheduler.Start();
 
-        logger.Info("Приложение seDirector Clean v1.1 запущено.");
+        logger.Info("Приложение seDirector Clean v1.2 запущено.");
 
         var running = true;
 
@@ -96,22 +97,27 @@ public static class Program
                     break;
 
                 case "9":
-                    ReloadConfig(manager, monitor, logger);
+                    SendRconCommand(manager, rconService);
                     WaitKey();
                     break;
 
                 case "10":
+                    ReloadConfig(manager, monitor, logger);
+                    WaitKey();
+                    break;
+
+                case "11":
                     running = HandleExit(manager, logger);
                     break;
 
                 default:
-                    Console.WriteLine("Неверный пункт меню. Введите число от 1 до 10.");
+                    Console.WriteLine("Неверный пункт меню. Введите число от 1 до 11.");
                     WaitKey();
                     break;
             }
         }
 
-        logger.Info("Приложение seDirector Clean v1.1 завершено.");
+        logger.Info("Приложение seDirector Clean v1.2 завершено.");
         return 0;
     }
 
@@ -178,7 +184,7 @@ public static class Program
         ClearScreen();
 
         Console.WriteLine("================================");
-        Console.WriteLine(" seDirector Clean v1.1");
+        Console.WriteLine(" seDirector Clean v1.2");
         Console.WriteLine("================================");
         Console.WriteLine();
         Console.WriteLine("1. Список серверов");
@@ -189,8 +195,9 @@ public static class Program
         Console.WriteLine("6. Просмотр логов");
         Console.WriteLine("7. Резервная копия сервера");
         Console.WriteLine("8. Резервное копирование всех серверов");
-        Console.WriteLine("9. Перечитать конфигурацию");
-        Console.WriteLine("10. Выход");
+        Console.WriteLine("9. Отправить RCON команду");
+        Console.WriteLine("10. Перечитать конфигурацию");
+        Console.WriteLine("11. Выход");
         Console.WriteLine();
         Console.Write("> ");
     }
@@ -323,6 +330,42 @@ public static class Program
         Console.WriteLine("Создано резервных копий: " + count);
     }
 
+    private static void SendRconCommand(ServerManager manager, RconService rconService)
+    {
+        var index = SelectServerIndex(manager, "Отправить RCON команду");
+
+        if (index == null)
+            return;
+
+        var server = manager.Servers[index.Value];
+
+        Console.WriteLine();
+        Console.Write("Введите команду для сервера '" + server.Name + "': ");
+
+        var command = Console.ReadLine();
+
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            Console.WriteLine("Команда не может быть пустой.");
+            return;
+        }
+
+        Console.WriteLine("Отправка команды...");
+
+        string response;
+        var success = rconService.SendCommand(server, command, out response);
+
+        Console.WriteLine();
+        Console.WriteLine("Результат: " + (success ? "Успешно" : "Ошибка (смотрите логи)"));
+
+        if (!string.IsNullOrWhiteSpace(response))
+        {
+            Console.WriteLine();
+            Console.WriteLine("Ответ сервера:");
+            Console.WriteLine(response);
+        }
+    }
+
     private static int? SelectServerIndex(ServerManager manager, string title)
     {
         ClearScreen();
@@ -423,49 +466,4 @@ public static class Program
         if (Confirm())
         {
             manager.StopAll();
-            Console.WriteLine("Все запущенные серверы остановлены.");
-        }
-
-        return true;
-    }
-
-    private static bool Confirm()
-    {
-        var answer = Console.ReadLine();
-
-        if (answer != null)
-            answer = answer.Trim().ToLowerInvariant();
-
-        return answer == "y" || answer == "yes" || answer == "д" || answer == "да";
-    }
-
-    private static void WaitKey()
-    {
-        Console.WriteLine();
-        Console.Write("Нажмите Enter для продолжения...");
-        Console.ReadLine();
-    }
-
-    private static void ClearScreen()
-    {
-        try
-        {
-            Console.Clear();
-        }
-        catch
-        {
-            // Некоторые терминалы не поддерживают очистку экрана.
-        }
-    }
-
-    private static string Truncate(string value, int length)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return string.Empty;
-
-        if (value.Length <= length)
-            return value;
-
-        return value.Substring(0, length);
-    }
-}
+            Console.WriteLine("Все запущенные серверы остановлены
