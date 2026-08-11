@@ -1,0 +1,7 @@
+[
+  {
+    "Name": "Team Fortress 2",
+    "Path": "C:\\Servers\\TF2\\srcds.exe",
+    "Arguments": "-console -game tf"
+  }
+]
