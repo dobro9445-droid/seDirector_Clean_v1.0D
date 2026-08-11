@@ -134,6 +134,29 @@ public sealed class ServerManager : IDisposable
 
     public bool TryAutoRestart(int index)
     {
+        if (!CanAutoRestart(index))
+            return false;
+
+        var server = Servers[index];
+
+        lock (_sync)
+        {
+            int attempts = 0;
+
+            if (_autoRestartAttempts.TryGetValue(index, out var storedAttempts))
+                attempts = storedAttempts;
+
+            _autoRestartAttempts[index] = attempts + 1;
+            _lastAutoRestart[index] = DateTime.Now;
+        }
+
+        _logger.Warning("Автоперезапуск сервера '" + server.Name + "'...");
+
+        return TryStartInternal(index, true);
+    }
+
+    public bool CanAutoRestart(int index)
+    {
         if (!IsValidIndex(index))
             return false;
 
@@ -161,10 +184,7 @@ public sealed class ServerManager : IDisposable
                 maxAttempts = 0;
 
             if (attempts >= maxAttempts)
-            {
-                _logger.Warning("Автоперезапуск сервера '" + server.Name + "' отключён: превышено число попыток.");
                 return false;
-            }
 
             DateTime lastAttempt;
 
@@ -181,13 +201,31 @@ public sealed class ServerManager : IDisposable
                     return false;
             }
 
-            _autoRestartAttempts[index] = attempts + 1;
-            _lastAutoRestart[index] = DateTime.Now;
+            return true;
         }
+    }
 
-        _logger.Warning("Автоперезапуск сервера '" + server.Name + "'...");
+    public bool HasReachedAutoRestartLimit(int index)
+    {
+        if (!IsValidIndex(index))
+            return true;
 
-        return TryStartInternal(index, true);
+        var server = Servers[index];
+
+        lock (_sync)
+        {
+            int attempts = 0;
+
+            if (_autoRestartAttempts.TryGetValue(index, out var storedAttempts))
+                attempts = storedAttempts;
+
+            int maxAttempts = server.MaxRestartAttempts;
+
+            if (maxAttempts < 0)
+                maxAttempts = 0;
+
+            return attempts >= maxAttempts;
+        }
     }
 
     private bool TryStartInternal(int index, bool isAutoStart)
@@ -410,151 +448,4 @@ public sealed class ServerManager : IDisposable
         {
             Process process;
 
-            if (_processes.TryGetValue(index, out process) && process != null)
-            {
-                try
-                {
-                    if (!process.HasExited)
-                        return "RUNNING (PID " + process.Id + ")";
-
-                    return "STOPPED (Exit code: " + process.ExitCode + ")";
-                }
-                catch
-                {
-                    return "UNKNOWN";
-                }
-            }
-        }
-
-        return "STOPPED";
-    }
-
-    public string GetUptime(int index)
-    {
-        DateTime startTime;
-
-        lock (_sync)
-        {
-            if (!_startTimes.TryGetValue(index, out startTime))
-                return "-";
-        }
-
-        if (!IsRunning(index))
-            return "-";
-
-        var diff = DateTime.Now - startTime;
-
-        return ((int)diff.TotalHours).ToString("00") + ":" +
-               diff.Minutes.ToString("00") + ":" +
-               diff.Seconds.ToString("00");
-    }
-
-    public string GetMemoryUsage(int index)
-    {
-        lock (_sync)
-        {
-            Process process;
-
-            if (!_processes.TryGetValue(index, out process) || process == null)
-                return "-";
-
-            try
-            {
-                if (!process.HasExited)
-                {
-                    var mb = process.WorkingSet64 / 1024 / 1024;
-                    return mb + " MB";
-                }
-            }
-            catch
-            {
-                return "-";
-            }
-        }
-
-        return "-";
-    }
-
-    public void StartAutoStartServers()
-    {
-        for (var i = 0; i < Servers.Count; i++)
-        {
-            if (Servers[i].AutoStart)
-                TryStart(i);
-        }
-    }
-
-    public void StopAll()
-    {
-        for (var i = 0; i < Servers.Count; i++)
-        {
-            if (IsRunning(i))
-                TryStopInternal(i, true);
-        }
-    }
-
-    private static void SetProcessPriority(Process process, string priority)
-    {
-        try
-        {
-            var p = (priority ?? string.Empty).Trim().ToLowerInvariant();
-
-            if (p == "low")
-            {
-                process.PriorityClass = ProcessPriorityClass.BelowNormal;
-            }
-            else if (p == "high")
-            {
-                process.PriorityClass = ProcessPriorityClass.AboveNormal;
-            }
-            else
-            {
-                process.PriorityClass = ProcessPriorityClass.Normal;
-            }
-        }
-        catch
-        {
-            // Если приоритет не удалось установить, игнорируем.
-        }
-    }
-
-    private static bool HasExitedSafe(Process process)
-    {
-        try
-        {
-            return process.HasExited;
-        }
-        catch
-        {
-            return true;
-        }
-    }
-
-    private static void DisposeProcess(Process process)
-    {
-        try
-        {
-            if (process != null)
-                process.Dispose();
-        }
-        catch
-        {
-            // Игнорируем ошибки освобождения процесса.
-        }
-    }
-
-    public void Dispose()
-    {
-        lock (_sync)
-        {
-            foreach (var process in _processes.Values)
-                DisposeProcess(process);
-
-            _processes.Clear();
-            _startTimes.Clear();
-            _manualStopped.Clear();
-            _autoRestartAttempts.Clear();
-            _lastAutoRestart.Clear();
-        }
-    }
-}
+            if (_processes.TryGetValue(index, out process) &&
