@@ -143,5 +143,44 @@ public static class Program
         }
     }
 
-    // === СЮДА ВСТАВЬТЕ ЧАСТЬ 2 ===
-}
+    private static void PerformAction(ServerManager manager, string title, Func<int, bool> action, bool requireConfirmation)
+    {
+        var index = SelectServerIndex(manager, title);
+        if (index == null) return;
+        if (requireConfirmation)
+        {
+            Console.WriteLine();
+            Console.Write("Подтвердить действие? (y/N): ");
+            if (!Confirm()) { Console.WriteLine("Действие отменено."); return; }
+        }
+        Console.WriteLine();
+        var success = action(index.Value);
+        Console.WriteLine(success ? "Операция выполнена успешно." : "Операция не выполнена. Подробности в логах.");
+    }
+
+    private static void ShowServerStatus(ServerManager manager)
+    {
+        var index = SelectServerIndex(manager, "Статус сервера");
+        if (index == null) return;
+        var server = manager.Servers[index.Value];
+        Console.WriteLine();
+        Console.WriteLine("Имя:                    " + server.Name);
+        Console.WriteLine("Тип:                    " + server.Type);
+        Console.WriteLine("Путь:                   " + server.Path);
+        Console.WriteLine("Аргументы:              " + server.Arguments);
+        Console.WriteLine("Порт:                   " + (server.Port.HasValue ? server.Port.Value.ToString() : "-"));
+        if (server.Port.HasValue)
+        {
+            var host = "127.0.0.1";
+            if (server.Rcon != null && !string.IsNullOrWhiteSpace(server.Rcon.Host)) host = server.Rcon.Host;
+            var portOpen = PortChecker.IsPortOpen(host, server.Port.Value);
+            Console.WriteLine("Проверка порта:         " + (portOpen ? "отвечает" : "не отвечает"));
+        }
+        Console.WriteLine("Приоритет:              " + server.Priority);
+        Console.WriteLine("Автозапуск:             " + (server.AutoStart ? "да" : "нет"));
+        Console.WriteLine("Автоперезапуск:         " + (server.RestartOnExit ? "да" : "нет"));
+        Console.WriteLine("Задержка перезапуска:   " + server.RestartDelaySeconds + " сек.");
+        Console.WriteLine("Лимит перезапусков:     " + server.MaxRestartAttempts);
+        Console.WriteLine("Остановлен вручную:     " + (manager.IsManualStopped(index.Value) ? "да" : "нет"));
+        Console.WriteLine("Статус:                 " + manager.GetStatus(index.Value));
+        Console.WriteLine("Аптайм
