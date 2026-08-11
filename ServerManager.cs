@@ -301,4 +301,298 @@ public sealed class ServerManager : IDisposable
 
                 if (!process.Start())
                 {
-                    _
+                    _logger.Error("Сервер '" + server.Name + "': Process.Start вернул false.");
+                    process.Dispose();
+                    return false;
+                }
+
+                SetProcessPriority(process, server.Priority);
+
+                _processes[index] = process;
+                _startTimes[index] = DateTime.Now;
+
+                if (!isAutoStart)
+                {
+                    _manualStopped.Remove(index);
+                    _autoRestartAttempts[index] = 0;
+                    _lastAutoRestart.Remove(index);
+                }
+
+                _logger.Info("Сервер '" + server.Name + "' запущен. PID: " + process.Id);
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.Error("Сервер '" + server.Name + "': ошибка запуска: " + ex.Message);
+                return false;
+            }
+        }
+    }
+
+    public bool TryStop(int index)
+    {
+        return TryStopInternal(index, true);
+    }
+
+    private bool TryStopInternal(int index, bool manualStop)
+    {
+        if (!IsValidIndex(index))
+            return false;
+
+        var server = Servers[index];
+
+        lock (_sync)
+        {
+            Process process;
+
+            if (!_processes.TryGetValue(index, out process) || process == null || HasExitedSafe(process))
+            {
+                if (manualStop)
+                {
+                    _manualStopped.Add(index);
+                    _autoRestartAttempts[index] = 0;
+                    _lastAutoRestart.Remove(index);
+                }
+
+                _startTimes.Remove(index);
+
+                if (process != null)
+                {
+                    DisposeProcess(process);
+                    _processes.Remove(index);
+                }
+
+                _logger.Warning("Сервер '" + server.Name + "' не запущен.");
+                return false;
+            }
+
+            try
+            {
+                _logger.Info("Остановка сервера '" + server.Name + "'...");
+
+                try
+                {
+                    process.Kill(true);
+                }
+                catch
+                {
+                    process.Kill();
+                }
+
+                if (!process.WaitForExit(5000))
+                {
+                    _logger.Warning("Сервер '" + server.Name + "' не завершился полностью за 5 секунд.");
+
+                    if (manualStop)
+                        _manualStopped.Add(index);
+
+                    return false;
+                }
+
+                if (manualStop)
+                {
+                    _manualStopped.Add(index);
+                    _autoRestartAttempts[index] = 0;
+                    _lastAutoRestart.Remove(index);
+                }
+                else
+                {
+                    _manualStopped.Remove(index);
+                }
+
+                _startTimes.Remove(index);
+
+                DisposeProcess(process);
+                _processes.Remove(index);
+
+                _logger.Info("Сервер '" + server.Name + "' остановлен.");
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                if (manualStop)
+                    _manualStopped.Add(index);
+
+                _logger.Error("Сервер '" + server.Name + "': ошибка остановки: " + ex.Message);
+                return false;
+            }
+        }
+    }
+
+    public bool TryRestart(int index)
+    {
+        if (!IsValidIndex(index))
+            return false;
+
+        var name = Servers[index].Name;
+
+        _logger.Info("Перезапуск сервера '" + name + "'...");
+
+        if (IsRunning(index))
+        {
+            TryStopInternal(index, true);
+            Thread.Sleep(1000);
+        }
+
+        return TryStartInternal(index, false);
+    }
+
+    public string GetStatus(int index)
+    {
+        if (!IsValidIndex(index))
+            return "UNKNOWN";
+
+        lock (_sync)
+        {
+            Process process;
+
+            if (_processes.TryGetValue(index, out process) && process != null)
+            {
+                try
+                {
+                    if (!process.HasExited)
+                        return "RUNNING (PID " + process.Id + ")";
+
+                    return "STOPPED (Exit code: " + process.ExitCode + ")";
+                }
+                catch
+                {
+                    return "UNKNOWN";
+                }
+            }
+        }
+
+        return "STOPPED";
+    }
+
+    public string GetUptime(int index)
+    {
+        DateTime startTime;
+
+        lock (_sync)
+        {
+            if (!_startTimes.TryGetValue(index, out startTime))
+                return "-";
+        }
+
+        if (!IsRunning(index))
+            return "-";
+
+        var diff = DateTime.Now - startTime;
+
+        return ((int)diff.TotalHours).ToString("00") + ":" +
+               diff.Minutes.ToString("00") + ":" +
+               diff.Seconds.ToString("00");
+    }
+
+    public string GetMemoryUsage(int index)
+    {
+        lock (_sync)
+        {
+            Process process;
+
+            if (!_processes.TryGetValue(index, out process) || process == null)
+                return "-";
+
+            try
+            {
+                if (!process.HasExited)
+                {
+                    var mb = process.WorkingSet64 / 1024 / 1024;
+                    return mb + " MB";
+                }
+            }
+            catch
+            {
+                return "-";
+            }
+        }
+
+        return "-";
+    }
+
+    public void StartAutoStartServers()
+    {
+        for (var i = 0; i < Servers.Count; i++)
+        {
+            if (Servers[i].AutoStart)
+                TryStart(i);
+        }
+    }
+
+    public void StopAll()
+    {
+        for (var i = 0; i < Servers.Count; i++)
+        {
+            if (IsRunning(i))
+                TryStopInternal(i, true);
+        }
+    }
+
+    private static void SetProcessPriority(Process process, string priority)
+    {
+        try
+        {
+            var p = (priority ?? string.Empty).Trim().ToLowerInvariant();
+
+            if (p == "low")
+            {
+                process.PriorityClass = ProcessPriorityClass.BelowNormal;
+            }
+            else if (p == "high")
+            {
+                process.PriorityClass = ProcessPriorityClass.AboveNormal;
+            }
+            else
+            {
+                process.PriorityClass = ProcessPriorityClass.Normal;
+            }
+        }
+        catch
+        {
+            // Если приоритет не удалось установить, игнорируем.
+        }
+    }
+
+    private static bool HasExitedSafe(Process process)
+    {
+        try
+        {
+            return process.HasExited;
+        }
+        catch
+        {
+            return true;
+        }
+    }
+
+    private static void DisposeProcess(Process process)
+    {
+        try
+        {
+            if (process != null)
+                process.Dispose();
+        }
+        catch
+        {
+            // Игнорируем ошибки освобождения процесса.
+        }
+    }
+
+    public void Dispose()
+    {
+        lock (_sync)
+        {
+            foreach (var process in _processes.Values)
+                DisposeProcess(process);
+
+            _processes.Clear();
+            _startTimes.Clear();
+            _manualStopped.Clear();
+            _autoRestartAttempts.Clear();
+            _lastAutoRestart.Clear();
+        }
+    }
+}
