@@ -1,4 +1,5 @@
 using System.Text;
+using System.Threading.Tasks;
 using seDirector.Core;
 
 namespace seDirector;
@@ -34,6 +35,9 @@ public static class Program
 
         using var scheduler = new SchedulerService(manager, backupService, logger);
         scheduler.Start();
+
+        using var webPanel = new WebPanelService(manager, backupService, logger);
+        var updateService = new UpdateService(logger);
 
         logger.Info("Приложение seDirector Clean v1.4 запущено.");
 
@@ -117,8 +121,13 @@ public static class Program
                     running = HandleExit(manager, logger);
                     break;
 
+                case "13":
+                    CheckUpdates(updateService).Wait();
+                    WaitKey();
+                    break;
+
                 default:
-                    Console.WriteLine("Неверный пункт меню. Введите число от 1 до 12.");
+                    Console.WriteLine("Неверный пункт меню. Введите число от 1 до 13.");
                     WaitKey();
                     break;
             }
@@ -145,4 +154,63 @@ public static class Program
             return baseDirectory;
 
         var appData = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.Application
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "seDirector Clean"
+        );
+
+        Directory.CreateDirectory(appData);
+
+        var baseConfig = Path.Combine(baseDirectory, "Config", "servers.json");
+        var appDataConfig = Path.Combine(appData, "Config", "servers.json");
+
+        if (File.Exists(baseConfig) && !File.Exists(appDataConfig))
+        {
+            var dir = Path.GetDirectoryName(appDataConfig);
+
+            if (dir != null)
+                Directory.CreateDirectory(dir);
+
+            File.Copy(baseConfig, appDataConfig, false);
+        }
+
+        return appData;
+    }
+
+    private static bool IsDirectoryWritable(string path)
+    {
+        try
+        {
+            Directory.CreateDirectory(path);
+
+            var testFile = Path.Combine(path, Path.GetRandomFileName());
+
+            File.WriteAllText(testFile, string.Empty);
+            File.Delete(testFile);
+
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static void PrintMenu()
+    {
+        ClearScreen();
+
+        Console.WriteLine("================================");
+        Console.WriteLine(" seDirector Clean v1.4");
+        Console.WriteLine("================================");
+        Console.WriteLine();
+        Console.WriteLine("1. Список серверов");
+        Console.WriteLine("2. Запустить сервер");
+        Console.WriteLine("3. Остановить сервер");
+        Console.WriteLine("4. Перезапустить сервер");
+        Console.WriteLine("5. Статус сервера");
+        Console.WriteLine("6. Просмотр логов");
+        Console.WriteLine("7. Резервная копия сервера");
+        Console.WriteLine("8. Резервное копирование всех серверов");
+        Console.WriteLine("9. Отправить RCON команду");
+        Console.WriteLine("10. Обновить сервер через SteamCMD");
+        Console
