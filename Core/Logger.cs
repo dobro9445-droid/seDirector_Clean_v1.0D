@@ -5,16 +5,19 @@ namespace seDirector.Core;
 public sealed class Logger
 {
     private readonly object _lock = new();
+    private readonly string _logsDirectory;
     private readonly string _logFilePath;
+
+    private const long MaxFileSizeBytes = 5 * 1024 * 1024; // 5 MB
+    private const int MaxArchiveCount = 3;
 
     public string LogFilePath => _logFilePath;
 
     public Logger(string baseDirectory)
     {
-        var logsDirectory = Path.Combine(baseDirectory, "Logs");
-        Directory.CreateDirectory(logsDirectory);
-
-        _logFilePath = Path.Combine(logsDirectory, "app.log");
+        _logsDirectory = Path.Combine(baseDirectory, "Logs");
+        Directory.CreateDirectory(_logsDirectory);
+        _logFilePath = Path.Combine(_logsDirectory, "app.log");
     }
 
     public void Info(string message)
@@ -40,6 +43,7 @@ public sealed class Logger
         {
             try
             {
+                RotateIfNeeded();
                 File.AppendAllText(_logFilePath, line, Encoding.UTF8);
             }
             catch
@@ -49,18 +53,56 @@ public sealed class Logger
         }
     }
 
+    private void RotateIfNeeded()
+    {
+        try
+        {
+            var fileInfo = new FileInfo(_logFilePath);
+
+            if (!fileInfo.Exists || fileInfo.Length < MaxFileSizeBytes)
+                return;
+
+            var oldest = Path.Combine(_logsDirectory, $"app.{MaxArchiveCount}.log");
+
+            if (File.Exists(oldest))
+                File.Delete(oldest);
+
+            for (var i = MaxArchiveCount - 1; i >= 1; i--)
+            {
+                var source = Path.Combine(_logsDirectory, $"app.{i}.log");
+                var destination = Path.Combine(_logsDirectory, $"app.{i + 1}.log");
+
+                if (File.Exists(source))
+                    File.Move(source, destination);
+            }
+
+            File.Move(_logFilePath, Path.Combine(_logsDirectory, "app.1.log"));
+        }
+        catch
+        {
+            // Если ротация не удалась, продолжаем писать в текущий лог.
+        }
+    }
+
     public IReadOnlyList<string> ReadLastLines(int count)
     {
         lock (_lock)
         {
-            if (!File.Exists(_logFilePath))
+            try
+            {
+                if (!File.Exists(_logFilePath))
+                    return Array.Empty<string>();
+
+                var lines = File.ReadAllLines(_logFilePath, Encoding.UTF8);
+
+                return lines
+                    .Skip(Math.Max(0, lines.Length - count))
+                    .ToList();
+            }
+            catch
+            {
                 return Array.Empty<string>();
-
-            var lines = File.ReadAllLines(_logFilePath, Encoding.UTF8);
-
-            return lines
-                .Skip(Math.Max(0, lines.Length - count))
-                .ToList();
+            }
         }
     }
 }
