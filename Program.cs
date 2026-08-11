@@ -27,7 +27,9 @@ public static class Program
         using var monitor = new MonitorService(manager, logger);
         monitor.Start();
 
-        logger.Info("Приложение seDirector Clean v1.0 запущено.");
+        var backupService = new BackupService(basePath, logger);
+
+        logger.Info("Приложение seDirector Clean v1.1 запущено.");
 
         var running = true;
 
@@ -81,22 +83,32 @@ public static class Program
                     break;
 
                 case "7":
-                    ReloadConfig(manager, monitor, logger);
+                    BackupSingleServer(manager, backupService);
                     WaitKey();
                     break;
 
                 case "8":
+                    BackupAllServers(manager, backupService);
+                    WaitKey();
+                    break;
+
+                case "9":
+                    ReloadConfig(manager, monitor, logger);
+                    WaitKey();
+                    break;
+
+                case "10":
                     running = HandleExit(manager, logger);
                     break;
 
                 default:
-                    Console.WriteLine("Неверный пункт меню. Введите число от 1 до 8.");
+                    Console.WriteLine("Неверный пункт меню. Введите число от 1 до 10.");
                     WaitKey();
                     break;
             }
         }
 
-        logger.Info("Приложение seDirector Clean v1.0 завершено.");
+        logger.Info("Приложение seDirector Clean v1.1 завершено.");
         return 0;
     }
 
@@ -172,8 +184,10 @@ public static class Program
         Console.WriteLine("4. Перезапустить сервер");
         Console.WriteLine("5. Статус сервера");
         Console.WriteLine("6. Просмотр логов");
-        Console.WriteLine("7. Перечитать конфигурацию");
-        Console.WriteLine("8. Выход");
+        Console.WriteLine("7. Резервная копия сервера");
+        Console.WriteLine("8. Резервное копирование всех серверов");
+        Console.WriteLine("9. Перечитать конфигурацию");
+        Console.WriteLine("10. Выход");
         Console.WriteLine();
         Console.Write("> ");
     }
@@ -256,6 +270,54 @@ public static class Program
         Console.WriteLine("Статус:                 " + manager.GetStatus(index.Value));
         Console.WriteLine("Аптайм:                 " + manager.GetUptime(index.Value));
         Console.WriteLine("Память:                 " + manager.GetMemoryUsage(index.Value));
+    }
+
+    private static void BackupSingleServer(ServerManager manager, BackupService backupService)
+    {
+        var index = SelectServerIndex(manager, "Резервная копия сервера");
+
+        if (index == null)
+            return;
+
+        Console.WriteLine();
+        Console.Write("Создать резервную копию этого сервера? (y/N): ");
+
+        if (!Confirm())
+        {
+            Console.WriteLine("Отменено.");
+            return;
+        }
+
+        Console.WriteLine("Создание резервной копии... Это может занять время.");
+
+        var success = backupService.BackupServer(manager.Servers[index.Value]);
+
+        Console.WriteLine(success
+            ? "Резервная копия создана."
+            : "Не удалось создать резервную копию. Подробности смотрите в логах.");
+    }
+
+    private static void BackupAllServers(ServerManager manager, BackupService backupService)
+    {
+        ClearScreen();
+
+        Console.WriteLine("=== Резервное копирование всех серверов ===");
+        Console.WriteLine();
+        Console.WriteLine("Будут скопированы только серверы с включённым Backup.Enabled = true.");
+        Console.WriteLine();
+        Console.Write("Продолжить? (y/N): ");
+
+        if (!Confirm())
+        {
+            Console.WriteLine("Отменено.");
+            return;
+        }
+
+        Console.WriteLine("Создание резервных копий... Это может занять время.");
+
+        var count = backupService.BackupAll(manager.Servers);
+
+        Console.WriteLine("Создано резервных копий: " + count);
     }
 
     private static int? SelectServerIndex(ServerManager manager, string title)
