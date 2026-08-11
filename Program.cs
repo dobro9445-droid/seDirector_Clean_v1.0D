@@ -29,11 +29,12 @@ public static class Program
 
         var backupService = new BackupService(basePath, logger);
         var rconService = new RconService(logger);
+        var steamCmdService = new SteamCmdService(basePath, logger);
 
         using var scheduler = new SchedulerService(manager, backupService, logger);
         scheduler.Start();
 
-        logger.Info("Приложение seDirector Clean v1.2 запущено.");
+        logger.Info("Приложение seDirector Clean v1.3 запущено.");
 
         var running = true;
 
@@ -102,22 +103,27 @@ public static class Program
                     break;
 
                 case "10":
-                    ReloadConfig(manager, monitor, logger);
+                    UpdateServerViaSteamCmd(manager, steamCmdService);
                     WaitKey();
                     break;
 
                 case "11":
+                    ReloadConfig(manager, monitor, logger);
+                    WaitKey();
+                    break;
+
+                case "12":
                     running = HandleExit(manager, logger);
                     break;
 
                 default:
-                    Console.WriteLine("Неверный пункт меню. Введите число от 1 до 11.");
+                    Console.WriteLine("Неверный пункт меню. Введите число от 1 до 12.");
                     WaitKey();
                     break;
             }
         }
 
-        logger.Info("Приложение seDirector Clean v1.2 завершено.");
+        logger.Info("Приложение seDirector Clean v1.3 завершено.");
         return 0;
     }
 
@@ -184,7 +190,7 @@ public static class Program
         ClearScreen();
 
         Console.WriteLine("================================");
-        Console.WriteLine(" seDirector Clean v1.2");
+        Console.WriteLine(" seDirector Clean v1.3");
         Console.WriteLine("================================");
         Console.WriteLine();
         Console.WriteLine("1. Список серверов");
@@ -196,8 +202,9 @@ public static class Program
         Console.WriteLine("7. Резервная копия сервера");
         Console.WriteLine("8. Резервное копирование всех серверов");
         Console.WriteLine("9. Отправить RCON команду");
-        Console.WriteLine("10. Перечитать конфигурацию");
-        Console.WriteLine("11. Выход");
+        Console.WriteLine("10. Обновить сервер через SteamCMD");
+        Console.WriteLine("11. Перечитать конфигурацию");
+        Console.WriteLine("12. Выход");
         Console.WriteLine();
         Console.Write("> ");
     }
@@ -366,6 +373,57 @@ public static class Program
         }
     }
 
+    private static void UpdateServerViaSteamCmd(ServerManager manager, SteamCmdService steamCmdService)
+    {
+        var index = SelectServerIndex(manager, "Обновить сервер через SteamCMD");
+
+        if (index == null)
+            return;
+
+        var server = manager.Servers[index.Value];
+
+        Console.WriteLine();
+
+        if (!steamCmdService.IsAvailable())
+        {
+            Console.WriteLine("SteamCMD не найден.");
+            Console.WriteLine("Создайте папку steamcmd рядом с программой и поместите туда steamcmd.exe.");
+            return;
+        }
+
+        if (manager.IsRunning(index.Value))
+        {
+            Console.WriteLine("Сервер сейчас запущен.");
+            Console.WriteLine("Для обновления файлы сервера должны быть свободны.");
+            Console.Write("Остановить сервер и продолжить обновление? (y/N): ");
+
+            if (!Confirm())
+            {
+                Console.WriteLine("Отменено.");
+                return;
+            }
+
+            manager.TryStop(index.Value);
+        }
+
+        Console.WriteLine();
+        Console.Write("Обновить сервер '" + server.Name + "' через SteamCMD? (y/N): ");
+
+        if (!Confirm())
+        {
+            Console.WriteLine("Отменено.");
+            return;
+        }
+
+        Console.WriteLine("Запуск SteamCMD... Это может занять много времени.");
+
+        var success = steamCmdService.UpdateServer(server);
+
+        Console.WriteLine(success
+            ? "Обновление сервера завершено."
+            : "Ошибка обновления сервера. Подробности смотрите в логах.");
+    }
+
     private static int? SelectServerIndex(ServerManager manager, string title)
     {
         ClearScreen();
@@ -466,4 +524,49 @@ public static class Program
         if (Confirm())
         {
             manager.StopAll();
-            Console.WriteLine("Все запущенные серверы остановлены
+            Console.WriteLine("Все запущенные серверы остановлены.");
+        }
+
+        return true;
+    }
+
+    private static bool Confirm()
+    {
+        var answer = Console.ReadLine();
+
+        if (answer != null)
+            answer = answer.Trim().ToLowerInvariant();
+
+        return answer == "y" || answer == "yes" || answer == "д" || answer == "да";
+    }
+
+    private static void WaitKey()
+    {
+        Console.WriteLine();
+        Console.Write("Нажмите Enter для продолжения...");
+        Console.ReadLine();
+    }
+
+    private static void ClearScreen()
+    {
+        try
+        {
+            Console.Clear();
+        }
+        catch
+        {
+            // Некоторые терминалы не поддерживают очистку экрана.
+        }
+    }
+
+    private static string Truncate(string value, int length)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        if (value.Length <= length)
+            return value;
+
+        return value.Substring(0, length);
+    }
+}
