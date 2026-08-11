@@ -1,3 +1,7 @@
+using System;
+using System.Collections.Generic;
+using System.Threading;
+
 namespace seDirector.Core;
 
 public sealed class MonitorService : IDisposable
@@ -34,6 +38,17 @@ public sealed class MonitorService : IDisposable
             );
 
             _logger.Info("Мониторинг состояния серверов запущен (интервал " + intervalMilliseconds + " мс).");
+        }
+    }
+
+    public void Refresh()
+    {
+        lock (_sync)
+        {
+            _previousState.Clear();
+            _autoRestartPending.Clear();
+            RefreshState();
+            _logger.Info("Состояние мониторинга обновлено.");
         }
     }
 
