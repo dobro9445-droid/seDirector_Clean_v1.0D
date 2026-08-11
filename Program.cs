@@ -29,6 +29,9 @@ public static class Program
 
         var backupService = new BackupService(basePath, logger);
 
+        using var scheduler = new SchedulerService(manager, backupService, logger);
+        scheduler.Start();
+
         logger.Info("Приложение seDirector Clean v1.1 запущено.");
 
         var running = true;
