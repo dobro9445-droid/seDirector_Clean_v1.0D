@@ -4,9 +4,12 @@ public sealed class MonitorService : IDisposable
 {
     private readonly ServerManager _manager;
     private readonly Logger _logger;
-    private readonly object _sync = new();
-    private readonly Dictionary<int, bool> _previousState = new();
-    private Timer? _timer;
+    private readonly object _sync = new object();
+
+    private readonly Dictionary<int, bool> _previousState = new Dictionary<int, bool>();
+    private readonly HashSet<int> _autoRestartPending = new HashSet<int>();
+
+    private Timer _timer;
 
     public MonitorService(ServerManager manager, Logger logger)
     {
@@ -18,19 +21,19 @@ public sealed class MonitorService : IDisposable
     {
         lock (_sync)
         {
-            if (_timer is not null)
+            if (_timer != null)
                 return;
 
             RefreshState();
 
             _timer = new Timer(
-                _ => Check(),
+                Check,
                 null,
                 intervalMilliseconds,
                 intervalMilliseconds
             );
 
-            _logger.Info($"Мониторинг состояния серверов запущен (интервал {intervalMilliseconds} мс).");
+            _logger.Info("Мониторинг состояния серверов запущен (интервал " + intervalMilliseconds + " мс).");
         }
     }
 
@@ -42,7 +45,7 @@ public sealed class MonitorService : IDisposable
         }
     }
 
-    private void Check()
+    private void Check(object state)
     {
         if (!Monitor.TryEnter(_sync, TimeSpan.FromSeconds(2)))
             return;
@@ -53,32 +56,61 @@ public sealed class MonitorService : IDisposable
             {
                 var current = _manager.IsRunning(i);
 
-                if (!_previousState.TryGetValue(i, out var previous))
+                bool previous;
+
+                if (!_previousState.TryGetValue(i, out previous))
                 {
                     _previousState[i] = current;
                     continue;
                 }
 
-                if (previous == current)
-                    continue;
-
-                var name = _manager.Servers[i].Name;
-
-                if (current)
+                if (previous != current)
                 {
-                    _logger.Info($"Мониторинг: сервер '{name}' запущен.");
-                }
-                else
-                {
-                    _logger.Warning($"Мониторинг: сервер '{name}' остановлен.");
+                    var name = _manager.Servers[i].Name;
+
+                    if (current)
+                    {
+                        _logger.Info("Мониторинг: сервер '" + name + "' запущен.");
+                    }
+                    else
+                    {
+                        _logger.Warning("Мониторинг: сервер '" + name + "' остановлен.");
+
+                        var server = _manager.Servers[i];
+
+                        if (server.RestartOnExit && !_manager.IsManualStopped(i))
+                        {
+                            _autoRestartPending.Add(i);
+                        }
+                    }
+
+                    _previousState[i] = current;
                 }
 
-                _previousState[i] = current;
+                if (_autoRestartPending.Contains(i))
+                {
+                    if (current ||
+                        _manager.IsManualStopped(i) ||
+                        !_manager.Servers[i].RestartOnExit ||
+                        _manager.HasReachedAutoRestartLimit(i))
+                    {
+                        _autoRestartPending.Remove(i);
+                    }
+                    else if (_manager.CanAutoRestart(i))
+                    {
+                        _manager.TryAutoRestart(i);
+
+                        if (_manager.IsRunning(i))
+                        {
+                            _autoRestartPending.Remove(i);
+                        }
+                    }
+                }
             }
         }
         catch (Exception ex)
         {
-            _logger.Error($"Мониторинг: ошибка проверки состояния: {ex.Message}");
+            _logger.Error("Мониторинг: ошибка проверки состояния: " + ex.Message);
         }
         finally
         {
@@ -88,8 +120,11 @@ public sealed class MonitorService : IDisposable
 
     public void Dispose()
     {
-        _timer?.Dispose();
-        _timer = null;
+        if (_timer != null)
+        {
+            _timer.Dispose();
+            _timer = null;
+        }
 
         _logger.Info("Мониторинг состояния серверов остановлен.");
     }
