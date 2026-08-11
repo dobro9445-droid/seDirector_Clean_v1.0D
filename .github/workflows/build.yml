@@ -1,0 +1,87 @@
+name: Build Windows EXE and ZIP
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore packages
+        run: dotnet restore
+
+      - name: Build Release
+        run: dotnet build -c Release --no-restore
+
+      - name: Publish win-x64 folder
+        run: dotnet publish seDirector.csproj -c Release -r win-x64 --self-contained true -o publish/win-x64 -p:PublishSingleFile=false -p:DebugType=embedded
+
+      - name: Publish portable single EXE
+        run: dotnet publish seDirector.csproj -c Release -r win-x64 --self-contained true -o publish/portable-win-x64 -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:DebugType=embedded
+
+      - name: Prepare portable folder
+        shell: pwsh
+        run: |
+          $stage = "dist/seDirector_Clean_v1.0_Portable"
+
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          New-Item -ItemType Directory -Force -Path "$stage/Config" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$stage/Logs" | Out-Null
+
+          Copy-Item "publish/portable-win-x64/*" $stage -Recurse -Force
+
+          if (Test-Path "Config/servers.json") {
+            Copy-Item "Config/servers.json" "$stage/Config/servers.json" -Force
+          }
+
+          if (Test-Path "README.md") {
+            Copy-Item "README.md" "$stage/README.md" -Force
+          }
+
+          Set-Content -Path "$stage/Logs/README.txt" -Value "Логи будут создаваться здесь." -Encoding UTF8
+
+          $bat = @(
+            '@echo off',
+            'cd /d "%~dp0"',
+            'seDirector.exe',
+            'pause'
+          ) -join "`r`n"
+
+          Set-Content -Path "$stage/Start_seDirector.bat" -Value $bat -Encoding ASCII
+
+      - name: Create portable ZIP
+        shell: pwsh
+        run: |
+          Remove-Item seDirector_Clean_v1.0_Portable_win-x64.zip -ErrorAction SilentlyContinue
+          Compress-Archive -Path "dist/seDirector_Clean_v1.0_Portable/*" -DestinationPath seDirector_Clean_v1.0_Portable_win-x64.zip -CompressionLevel Optimal
+
+      - name: Upload portable EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: seDirector_EXE
+          path: publish/portable-win-x64/seDirector.exe
+
+      - name: Upload portable ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: seDirector_Clean_v1.0_Portable_win-x64
+          path: seDirector_Clean_v1.0_Portable_win-x64.zip
+
+      - name: Upload win-x64 folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: seDirector_Clean_v1.0_win-x64
+          path: publish/win-x64
