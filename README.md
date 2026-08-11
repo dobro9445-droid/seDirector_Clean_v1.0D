@@ -1,2 +1,2 @@
-# seDirector_Clean_v1.0D
+# seDirector Clean v1.4.0
 Server game manager 
