@@ -12,15 +12,8 @@ public sealed class ServerManager : IDisposable
 
     private readonly Dictionary<int, Process> _processes = new Dictionary<int, Process>();
     private readonly Dictionary<int, DateTime> _startTimes = new Dictionary<int, DateTime>();
-
-    // Серверы, остановленные пользователем вручную.
-    // Их нельзя автоматически перезапускать.
     private readonly HashSet<int> _manualStopped = new HashSet<int>();
-
-    // Счётчик попыток автоперезапуска.
     private readonly Dictionary<int, int> _autoRestartAttempts = new Dictionary<int, int>();
-
-    // Время последней попытки автоперезапуска.
     private readonly Dictionary<int, DateTime> _lastAutoRestart = new Dictionary<int, DateTime>();
 
     public List<Server> Servers { get; private set; } = new List<Server>();
@@ -39,7 +32,6 @@ public sealed class ServerManager : IDisposable
                 CreateDefaultConfig();
 
             var json = File.ReadAllText(_configPath);
-
             var options = new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true,
@@ -49,7 +41,6 @@ public sealed class ServerManager : IDisposable
 
             var deserialized = JsonSerializer.Deserialize<List<Server>>(json, options);
             Servers = deserialized ?? new List<Server>();
-
             _logger.Info("Конфигурация загружена: " + Servers.Count + " сервер(ов).");
         }
         catch (Exception ex)
@@ -62,7 +53,6 @@ public sealed class ServerManager : IDisposable
     private void CreateDefaultConfig()
     {
         var directory = Path.GetDirectoryName(_configPath);
-
         if (!string.IsNullOrWhiteSpace(directory))
             Directory.CreateDirectory(directory);
 
@@ -81,14 +71,24 @@ public sealed class ServerManager : IDisposable
             }
         };
 
-        var options = new JsonSerializerOptions
-        {
-            WriteIndented = true
-        };
-
+        var options = new JsonSerializerOptions { WriteIndented = true };
         File.WriteAllText(_configPath, JsonSerializer.Serialize(sample, options));
-
         _logger.Info("Создан файл конфигурации по умолчанию: " + _configPath);
+    }
+
+    public void SaveConfig()
+    {
+        try
+        {
+            var options = new JsonSerializerOptions { WriteIndented = true };
+            var json = JsonSerializer.Serialize(Servers, options);
+            File.WriteAllText(_configPath, json);
+            _logger.Info("Конфигурация сохранена.");
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Не удалось сохранить конфигурацию: " + ex.Message);
+        }
     }
 
     public bool IsValidIndex(int index)
@@ -100,31 +100,17 @@ public sealed class ServerManager : IDisposable
     {
         lock (_sync)
         {
-            if (!IsValidIndex(index))
-                return false;
-
+            if (!IsValidIndex(index)) return false;
             Process process;
-
-            if (!_processes.TryGetValue(index, out process) || process == null)
-                return false;
-
-            try
-            {
-                return !process.HasExited;
-            }
-            catch
-            {
-                return false;
-            }
+            if (!_processes.TryGetValue(index, out process) || process == null) return false;
+            try { return !process.HasExited; }
+            catch { return false; }
         }
     }
 
     public bool IsManualStopped(int index)
     {
-        lock (_sync)
-        {
-            return _manualStopped.Contains(index);
-        }
+        lock (_sync) { return _manualStopped.Contains(index); }
     }
 
     public bool TryStart(int index)
@@ -134,111 +120,66 @@ public sealed class ServerManager : IDisposable
 
     public bool TryAutoRestart(int index)
     {
-        if (!CanAutoRestart(index))
-            return false;
-
+        if (!CanAutoRestart(index)) return false;
         var server = Servers[index];
-
         lock (_sync)
         {
             int attempts = 0;
-
-            if (_autoRestartAttempts.TryGetValue(index, out var storedAttempts))
-                attempts = storedAttempts;
-
+            if (_autoRestartAttempts.TryGetValue(index, out var storedAttempts)) attempts = storedAttempts;
             _autoRestartAttempts[index] = attempts + 1;
             _lastAutoRestart[index] = DateTime.Now;
         }
-
         _logger.Warning("Автоперезапуск сервера '" + server.Name + "'...");
-
         return TryStartInternal(index, true);
     }
 
     public bool CanAutoRestart(int index)
     {
-        if (!IsValidIndex(index))
-            return false;
-
+        if (!IsValidIndex(index)) return false;
         var server = Servers[index];
-
-        if (!server.RestartOnExit)
-            return false;
-
-        if (IsRunning(index))
-            return false;
-
+        if (!server.RestartOnExit) return false;
+        if (IsRunning(index)) return false;
         lock (_sync)
         {
-            if (_manualStopped.Contains(index))
-                return false;
-
+            if (_manualStopped.Contains(index)) return false;
             int attempts = 0;
-
-            if (_autoRestartAttempts.TryGetValue(index, out var storedAttempts))
-                attempts = storedAttempts;
-
+            if (_autoRestartAttempts.TryGetValue(index, out var storedAttempts)) attempts = storedAttempts;
             int maxAttempts = server.MaxRestartAttempts;
-
-            if (maxAttempts < 0)
-                maxAttempts = 0;
-
-            if (attempts >= maxAttempts)
-                return false;
-
+            if (maxAttempts < 0) maxAttempts = 0;
+            if (attempts >= maxAttempts) return false;
             DateTime lastAttempt;
-
             if (_lastAutoRestart.TryGetValue(index, out lastAttempt))
             {
                 int delaySeconds = server.RestartDelaySeconds;
-
-                if (delaySeconds < 0)
-                    delaySeconds = 0;
-
+                if (delaySeconds < 0) delaySeconds = 0;
                 var passed = DateTime.Now - lastAttempt;
-
-                if (passed.TotalSeconds < delaySeconds)
-                    return false;
+                if (passed.TotalSeconds < delaySeconds) return false;
             }
-
             return true;
         }
     }
 
     public bool HasReachedAutoRestartLimit(int index)
     {
-        if (!IsValidIndex(index))
-            return true;
-
+        if (!IsValidIndex(index)) return true;
         var server = Servers[index];
-
         lock (_sync)
         {
             int attempts = 0;
-
-            if (_autoRestartAttempts.TryGetValue(index, out var storedAttempts))
-                attempts = storedAttempts;
-
+            if (_autoRestartAttempts.TryGetValue(index, out var storedAttempts)) attempts = storedAttempts;
             int maxAttempts = server.MaxRestartAttempts;
-
-            if (maxAttempts < 0)
-                maxAttempts = 0;
-
+            if (maxAttempts < 0) maxAttempts = 0;
             return attempts >= maxAttempts;
         }
     }
 
     private bool TryStartInternal(int index, bool isAutoStart)
     {
-        if (!IsValidIndex(index))
-            return false;
-
+        if (!IsValidIndex(index)) return false;
         var server = Servers[index];
-
         lock (_sync)
         {
             Process existing;
-
             if (_processes.TryGetValue(index, out existing))
             {
                 if (existing != null && !HasExitedSafe(existing))
@@ -249,11 +190,9 @@ public sealed class ServerManager : IDisposable
                         _autoRestartAttempts[index] = 0;
                         _lastAutoRestart.Remove(index);
                     }
-
                     _logger.Warning("Сервер '" + server.Name + "' уже запущен.");
                     return false;
                 }
-
                 DisposeProcess(existing);
                 _processes.Remove(index);
             }
@@ -267,7 +206,6 @@ public sealed class ServerManager : IDisposable
                 }
 
                 var fullPath = Path.GetFullPath(server.Path);
-
                 if (!File.Exists(fullPath))
                 {
                     _logger.Error("Сервер '" + server.Name + "': файл не найден: " + fullPath);
@@ -275,10 +213,7 @@ public sealed class ServerManager : IDisposable
                 }
 
                 var workingDirectory = Path.GetDirectoryName(fullPath);
-
-                if (string.IsNullOrWhiteSpace(workingDirectory))
-                    workingDirectory = Environment.CurrentDirectory;
-
+                if (string.IsNullOrWhiteSpace(workingDirectory)) workingDirectory = Environment.CurrentDirectory;
                 var useShellExecute = OperatingSystem.IsWindows();
 
                 var startInfo = new ProcessStartInfo
@@ -293,11 +228,7 @@ public sealed class ServerManager : IDisposable
                     WindowStyle = ProcessWindowStyle.Normal
                 };
 
-                var process = new Process
-                {
-                    StartInfo = startInfo,
-                    EnableRaisingEvents = true
-                };
+                var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
 
                 if (!process.Start())
                 {
@@ -307,7 +238,6 @@ public sealed class ServerManager : IDisposable
                 }
 
                 SetProcessPriority(process, server.Priority);
-
                 _processes[index] = process;
                 _startTimes[index] = DateTime.Now;
 
@@ -319,7 +249,6 @@ public sealed class ServerManager : IDisposable
                 }
 
                 _logger.Info("Сервер '" + server.Name + "' запущен. PID: " + process.Id);
-
                 return true;
             }
             catch (Exception ex)
@@ -337,15 +266,11 @@ public sealed class ServerManager : IDisposable
 
     private bool TryStopInternal(int index, bool manualStop)
     {
-        if (!IsValidIndex(index))
-            return false;
-
+        if (!IsValidIndex(index)) return false;
         var server = Servers[index];
-
         lock (_sync)
         {
             Process process;
-
             if (!_processes.TryGetValue(index, out process) || process == null || HasExitedSafe(process))
             {
                 if (manualStop)
@@ -354,15 +279,8 @@ public sealed class ServerManager : IDisposable
                     _autoRestartAttempts[index] = 0;
                     _lastAutoRestart.Remove(index);
                 }
-
                 _startTimes.Remove(index);
-
-                if (process != null)
-                {
-                    DisposeProcess(process);
-                    _processes.Remove(index);
-                }
-
+                if (process != null) { DisposeProcess(process); _processes.Remove(index); }
                 _logger.Warning("Сервер '" + server.Name + "' не запущен.");
                 return false;
             }
@@ -370,23 +288,13 @@ public sealed class ServerManager : IDisposable
             try
             {
                 _logger.Info("Остановка сервера '" + server.Name + "'...");
-
-                try
-                {
-                    process.Kill(true);
-                }
-                catch
-                {
-                    process.Kill();
-                }
+                try { process.Kill(true); }
+                catch { process.Kill(); }
 
                 if (!process.WaitForExit(5000))
                 {
                     _logger.Warning("Сервер '" + server.Name + "' не завершился полностью за 5 секунд.");
-
-                    if (manualStop)
-                        _manualStopped.Add(index);
-
+                    if (manualStop) _manualStopped.Add(index);
                     return false;
                 }
 
@@ -402,19 +310,14 @@ public sealed class ServerManager : IDisposable
                 }
 
                 _startTimes.Remove(index);
-
                 DisposeProcess(process);
                 _processes.Remove(index);
-
                 _logger.Info("Сервер '" + server.Name + "' остановлен.");
-
                 return true;
             }
             catch (Exception ex)
             {
-                if (manualStop)
-                    _manualStopped.Add(index);
-
+                if (manualStop) _manualStopped.Add(index);
                 _logger.Error("Сервер '" + server.Name + "': ошибка остановки: " + ex.Message);
                 return false;
             }
@@ -423,68 +326,46 @@ public sealed class ServerManager : IDisposable
 
     public bool TryRestart(int index)
     {
-        if (!IsValidIndex(index))
-            return false;
-
+        if (!IsValidIndex(index)) return false;
         var name = Servers[index].Name;
-
         _logger.Info("Перезапуск сервера '" + name + "'...");
-
         if (IsRunning(index))
         {
             TryStopInternal(index, true);
             Thread.Sleep(1000);
         }
-
         return TryStartInternal(index, false);
     }
 
     public string GetStatus(int index)
     {
-        if (!IsValidIndex(index))
-            return "UNKNOWN";
-
+        if (!IsValidIndex(index)) return "UNKNOWN";
         lock (_sync)
         {
             Process process;
-
             if (_processes.TryGetValue(index, out process) && process != null)
             {
                 try
                 {
-                    if (!process.HasExited)
-                        return "RUNNING (PID " + process.Id + ")";
-
+                    if (!process.HasExited) return "RUNNING (PID " + process.Id + ")";
                     return "STOPPED (Exit code: " + process.ExitCode + ")";
                 }
-                catch
-                {
-                    return "UNKNOWN";
-                }
+                catch { return "UNKNOWN"; }
             }
         }
-
         return "STOPPED";
     }
 
     public string GetUptime(int index)
     {
         DateTime startTime;
-
         lock (_sync)
         {
-            if (!_startTimes.TryGetValue(index, out startTime))
-                return "-";
+            if (!_startTimes.TryGetValue(index, out startTime)) return "-";
         }
-
-        if (!IsRunning(index))
-            return "-";
-
+        if (!IsRunning(index)) return "-";
         var diff = DateTime.Now - startTime;
-
-        return ((int)diff.TotalHours).ToString("00") + ":" +
-               diff.Minutes.ToString("00") + ":" +
-               diff.Seconds.ToString("00");
+        return ((int)diff.TotalHours).ToString("00") + ":" + diff.Minutes.ToString("00") + ":" + diff.Seconds.ToString("00");
     }
 
     public string GetMemoryUsage(int index)
@@ -492,10 +373,7 @@ public sealed class ServerManager : IDisposable
         lock (_sync)
         {
             Process process;
-
-            if (!_processes.TryGetValue(index, out process) || process == null)
-                return "-";
-
+            if (!_processes.TryGetValue(index, out process) || process == null) return "-";
             try
             {
                 if (!process.HasExited)
@@ -504,12 +382,8 @@ public sealed class ServerManager : IDisposable
                     return mb + " MB";
                 }
             }
-            catch
-            {
-                return "-";
-            }
+            catch { return "-"; }
         }
-
         return "-";
     }
 
@@ -517,8 +391,7 @@ public sealed class ServerManager : IDisposable
     {
         for (var i = 0; i < Servers.Count; i++)
         {
-            if (Servers[i].AutoStart)
-                TryStart(i);
+            if (Servers[i].AutoStart) TryStart(i);
         }
     }
 
@@ -526,8 +399,7 @@ public sealed class ServerManager : IDisposable
     {
         for (var i = 0; i < Servers.Count; i++)
         {
-            if (IsRunning(i))
-                TryStopInternal(i, true);
+            if (IsRunning(i)) TryStopInternal(i, true);
         }
     }
 
@@ -536,58 +408,30 @@ public sealed class ServerManager : IDisposable
         try
         {
             var p = (priority ?? string.Empty).Trim().ToLowerInvariant();
-
-            if (p == "low")
-            {
-                process.PriorityClass = ProcessPriorityClass.BelowNormal;
-            }
-            else if (p == "high")
-            {
-                process.PriorityClass = ProcessPriorityClass.AboveNormal;
-            }
-            else
-            {
-                process.PriorityClass = ProcessPriorityClass.Normal;
-            }
+            if (p == "low") process.PriorityClass = ProcessPriorityClass.BelowNormal;
+            else if (p == "high") process.PriorityClass = ProcessPriorityClass.AboveNormal;
+            else process.PriorityClass = ProcessPriorityClass.Normal;
         }
-        catch
-        {
-            // Если приоритет не удалось установить, игнорируем.
-        }
+        catch { }
     }
 
     private static bool HasExitedSafe(Process process)
     {
-        try
-        {
-            return process.HasExited;
-        }
-        catch
-        {
-            return true;
-        }
+        try { return process.HasExited; }
+        catch { return true; }
     }
 
     private static void DisposeProcess(Process process)
     {
-        try
-        {
-            if (process != null)
-                process.Dispose();
-        }
-        catch
-        {
-            // Игнорируем ошибки освобождения процесса.
-        }
+        try { if (process != null) process.Dispose(); }
+        catch { }
     }
 
     public void Dispose()
     {
         lock (_sync)
         {
-            foreach (var process in _processes.Values)
-                DisposeProcess(process);
-
+            foreach (var process in _processes.Values) DisposeProcess(process);
             _processes.Clear();
             _startTimes.Clear();
             _manualStopped.Clear();
