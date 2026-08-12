@@ -109,4 +109,171 @@ public sealed class MainForm : Form
         Controls.Add(topPanel);
 
         _refreshTimer = new System.Windows.Forms.Timer { Interval = 3000 };
-        _refreshTimer.Tick
+        _refreshTimer.Tick += (s, e) => RefreshData();
+
+        Load += (s, e) => { RefreshData(); _refreshTimer.Start(); };
+
+        FormClosing += (s, e) =>
+        {
+            var result = MessageBox.Show("Выйти из seDirector Clean?", "Выход", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (result == DialogResult.No) { e.Cancel = true; return; }
+            var stopResult = MessageBox.Show("Остановить все запущенные серверы?", "Остановка серверов", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (stopResult == DialogResult.Yes) _manager.StopAll();
+            _refreshTimer.Stop();
+        };
+    }
+
+    private int GetSelectedIndex()
+    {
+        if (_grid.SelectedRows.Count == 0) { MessageBox.Show("Выберите сервер в таблице.", "Внимание", MessageBoxButtons.OK, MessageBoxIcon.Warning); return -1; }
+        return _grid.SelectedRows[0].Index;
+    }
+
+    private void RefreshData()
+    {
+        _grid.Rows.Clear();
+        for (var i = 0; i < _manager.Servers.Count; i++)
+        {
+            var server = _manager.Servers[i];
+            _grid.Rows.Add(i + 1, server.Name, _manager.GetStatus(i), _manager.GetUptime(i), _manager.GetMemoryUsage(i), server.Path);
+        }
+        var lines = _logger.ReadLastLines(50);
+        _logBox.Lines = lines.ToArray();
+        if (_logBox.Lines.Length > 0) _logBox.SelectionStart = _logBox.Text.Length;
+    }
+
+    private void BtnStart_Click(object? sender, EventArgs e)
+    {
+        var index = GetSelectedIndex();
+        if (index < 0) return;
+        var success = _manager.TryStart(index);
+        MessageBox.Show(success ? "Сервер запущен." : "Не удалось запустить сервер.", "Результат", MessageBoxButtons.OK, success ? MessageBoxIcon.Information : MessageBoxIcon.Error);
+        RefreshData();
+    }
+
+    private void BtnStop_Click(object? sender, EventArgs e)
+    {
+        var index = GetSelectedIndex();
+        if (index < 0) return;
+        var result = MessageBox.Show("Остановить сервер?", "Подтверждение", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+        if (result != DialogResult.Yes) return;
+        var success = _softStopService.Stop(index);
+        MessageBox.Show(success ? "Сервер остановлен." : "Не удалось остановить сервер.", "Результат", MessageBoxButtons.OK, success ? MessageBoxIcon.Information : MessageBoxIcon.Error);
+        RefreshData();
+    }
+
+    private void BtnRestart_Click(object? sender, EventArgs e)
+    {
+        var index = GetSelectedIndex();
+        if (index < 0) return;
+        var result = MessageBox.Show("Перезапустить сервер?", "Подтверждение", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+        if (result != DialogResult.Yes) return;
+        var success = _manager.TryRestart(index);
+        MessageBox.Show(success ? "Сервер перезапущен." : "Не удалось перезапустить сервер.", "Результат", MessageBoxButtons.OK, success ? MessageBoxIcon.Information : MessageBoxIcon.Error);
+        RefreshData();
+    }
+
+    private void BtnBackup_Click(object? sender, EventArgs e)
+    {
+        var index = GetSelectedIndex();
+        if (index < 0) return;
+        var success = _backupService.BackupServer(_manager.Servers[index]);
+        MessageBox.Show(success ? "Резервная копия создана." : "Не удалось создать резервную копию.", "Результат", MessageBoxButtons.OK, success ? MessageBoxIcon.Information : MessageBoxIcon.Error);
+    }
+
+    private void BtnSteam_Click(object? sender, EventArgs e)
+    {
+        var index = GetSelectedIndex();
+        if (index < 0) return;
+        if (!_steamCmdService.IsAvailable()) { MessageBox.Show("SteamCMD не найден.", "SteamCMD", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+        if (_manager.IsRunning(index))
+        {
+            var stopResult = MessageBox.Show("Сервер запущен. Остановить и обновить?", "SteamCMD", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (stopResult != DialogResult.Yes) return;
+            _manager.TryStop(index);
+        }
+        var result = MessageBox.Show("Обновить сервер через SteamCMD?", "SteamCMD", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+        if (result != DialogResult.Yes) return;
+        Cursor = Cursors.WaitCursor;
+        var success = _steamCmdService.UpdateServer(_manager.Servers[index]);
+        Cursor = Cursors.Default;
+        MessageBox.Show(success ? "Обновление завершено." : "Ошибка обновления.", "SteamCMD", MessageBoxButtons.OK, success ? MessageBoxIcon.Information : MessageBoxIcon.Error);
+        RefreshData();
+    }
+
+    private void BtnRcon_Click(object? sender, EventArgs e)
+    {
+        var index = GetSelectedIndex();
+        if (index < 0) return;
+        var server = _manager.Servers[index];
+        using var inputForm = new Form
+        {
+            Text = "RCON команда для " + server.Name,
+            Size = new Size(450, 150),
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            MaximizeBox = false,
+            MinimizeBox = false
+        };
+        var label = new Label { Text = "Введите команду:", Location = new Point(10, 15), AutoSize = true };
+        var textBox = new TextBox { Location = new Point(10, 40), Size = new Size(410, 25) };
+        var okButton = new Button { Text = "Отправить", DialogResult = DialogResult.OK, Location = new Point(250, 75), Size = new Size(80, 30) };
+        var cancelButton = new Button { Text = "Отмена", DialogResult = DialogResult.Cancel, Location = new Point(340, 75), Size = new Size(80, 30) };
+        inputForm.Controls.AddRange(new Control[] { label, textBox, okButton, cancelButton });
+        inputForm.AcceptButton = okButton;
+        inputForm.CancelButton = cancelButton;
+        if (inputForm.ShowDialog() != DialogResult.OK) return;
+        var command = textBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(command)) return;
+        string response;
+        var success = _rconService.SendCommand(server, command, out response);
+        var message = success ? "Команда выполнена.\n\nОтвет:\n" + response : "Ошибка отправки команды.";
+        MessageBox.Show(message, "RCON", MessageBoxButtons.OK, success ? MessageBoxIcon.Information : MessageBoxIcon.Error);
+    }
+
+    private async void BtnUpdate_Click(object? sender, EventArgs e)
+    {
+        Cursor = Cursors.WaitCursor;
+        var result = await _updateService.CheckForUpdatesAsync();
+        Cursor = Cursors.Default;
+        MessageBox.Show(result, "Проверка обновлений", MessageBoxButtons.OK, MessageBoxIcon.Information);
+    }
+
+    private void BtnReload_Click(object? sender, EventArgs e)
+    {
+        var result = MessageBox.Show("Перечитать конфигурацию?\nВсе запущенные серверы будут остановлены.", "Перечитать конфигурацию", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+        if (result != DialogResult.Yes) return;
+        _manager.StopAll();
+        _manager.LoadServers();
+        RefreshData();
+        MessageBox.Show("Конфигурация перечитана.", "Готово", MessageBoxButtons.OK, MessageBoxIcon.Information);
+    }
+
+    private void BtnNetwork_Click(object? sender, EventArgs e)
+    {
+        var index = GetSelectedIndex();
+        if (index < 0) return;
+        var server = _manager.Servers[index];
+        using var form = new NetworkSettingsForm(server);
+        if (form.ShowDialog() == DialogResult.OK)
+        {
+            _manager.SaveConfig();
+            RefreshData();
+            MessageBox.Show("Сетевые настройки сохранены.", "Готово", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+    }
+
+    private void BtnSettings_Click(object? sender, EventArgs e)
+    {
+        var index = GetSelectedIndex();
+        if (index < 0) return;
+        var server = _manager.Servers[index];
+        using var form = new ServerSettingsForm(server);
+        if (form.ShowDialog() == DialogResult.OK)
+        {
+            _manager.SaveConfig();
+            RefreshData();
+            MessageBox.Show("Настройки сервера сохранены.", "Готово", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+    }
+}
