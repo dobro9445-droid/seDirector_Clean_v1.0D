@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Threading;
 using seDirector.Models;
 
 namespace seDirector.Core;
@@ -14,7 +11,7 @@ public sealed class SchedulerService : IDisposable
     private readonly object _sync = new object();
     private readonly Dictionary<string, DateTime> _lastExecuted = new Dictionary<string, DateTime>();
 
-    private Timer? _timer;
+    private System.Threading.Timer? _timer;
 
     public SchedulerService(ServerManager manager, BackupService backupService, Logger logger)
     {
@@ -30,7 +27,7 @@ public sealed class SchedulerService : IDisposable
             if (_timer != null)
                 return;
 
-            _timer = new Timer(
+            _timer = new System.Threading.Timer(
                 Check,
                 null,
                 intervalMilliseconds,
@@ -41,7 +38,7 @@ public sealed class SchedulerService : IDisposable
         }
     }
 
-    private void Check(object state)
+    private void Check(object? state)
     {
         if (!Monitor.TryEnter(_sync, TimeSpan.FromSeconds(2)))
             return;
