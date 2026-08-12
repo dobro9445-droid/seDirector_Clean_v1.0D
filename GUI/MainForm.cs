@@ -30,19 +30,20 @@ public sealed class MainForm : Form
 
         Text = "seDirector Clean v1.5";
         Size = new Size(950, 650);
-        MinimumSize = new Size(800, 550);
+        MinimumSize = new Size(850, 550);
         StartPosition = FormStartPosition.CenterScreen;
         Font = new Font("Segoe UI", 9.5f);
 
         var topPanel = new Panel { Dock = DockStyle.Top, Height = 45 };
-        var btnStart = new Button { Text = "Запустить", Location = new Point(10, 8), Size = new Size(100, 30) };
-        var btnStop = new Button { Text = "Остановить", Location = new Point(115, 8), Size = new Size(100, 30) };
-        var btnRestart = new Button { Text = "Перезапуск", Location = new Point(220, 8), Size = new Size(100, 30) };
-        var btnBackup = new Button { Text = "Бэкап", Location = new Point(335, 8), Size = new Size(90, 30) };
-        var btnSteam = new Button { Text = "SteamCMD", Location = new Point(430, 8), Size = new Size(100, 30) };
-        var btnRcon = new Button { Text = "RCON", Location = new Point(535, 8), Size = new Size(80, 30) };
-        var btnUpdate = new Button { Text = "Обновления", Location = new Point(630, 8), Size = new Size(110, 30) };
-        var btnReload = new Button { Text = "Перечитать", Location = new Point(745, 8), Size = new Size(100, 30) };
+        var btnStart = new Button { Text = "Запустить", Location = new Point(5, 8), Size = new Size(95, 30) };
+        var btnStop = new Button { Text = "Остановить", Location = new Point(105, 8), Size = new Size(95, 30) };
+        var btnRestart = new Button { Text = "Перезапуск", Location = new Point(205, 8), Size = new Size(95, 30) };
+        var btnBackup = new Button { Text = "Бэкап", Location = new Point(305, 8), Size = new Size(75, 30) };
+        var btnSteam = new Button { Text = "SteamCMD", Location = new Point(385, 8), Size = new Size(90, 30) };
+        var btnRcon = new Button { Text = "RCON", Location = new Point(480, 8), Size = new Size(65, 30) };
+        var btnUpdate = new Button { Text = "Обновления", Location = new Point(550, 8), Size = new Size(100, 30) };
+        var btnReload = new Button { Text = "Перечитать", Location = new Point(655, 8), Size = new Size(90, 30) };
+        var btnNetwork = new Button { Text = "Сеть", Location = new Point(750, 8), Size = new Size(70, 30) };
 
         btnStart.Click += BtnStart_Click;
         btnStop.Click += BtnStop_Click;
@@ -52,8 +53,9 @@ public sealed class MainForm : Form
         btnRcon.Click += BtnRcon_Click;
         btnUpdate.Click += BtnUpdate_Click;
         btnReload.Click += BtnReload_Click;
+        btnNetwork.Click += BtnNetwork_Click;
 
-        topPanel.Controls.AddRange(new Control[] { btnStart, btnStop, btnRestart, btnBackup, btnSteam, btnRcon, btnUpdate, btnReload });
+        topPanel.Controls.AddRange(new Control[] { btnStart, btnStop, btnRestart, btnBackup, btnSteam, btnRcon, btnUpdate, btnReload, btnNetwork });
 
         _grid = new DataGridView
         {
@@ -201,47 +203,4 @@ public sealed class MainForm : Form
     {
         var index = GetSelectedIndex();
         if (index < 0) return;
-        var server = _manager.Servers[index];
-        using var inputForm = new Form
-        {
-            Text = "RCON команда для " + server.Name,
-            Size = new Size(450, 150),
-            StartPosition = FormStartPosition.CenterParent,
-            FormBorderStyle = FormBorderStyle.FixedDialog,
-            MaximizeBox = false,
-            MinimizeBox = false
-        };
-        var label = new Label { Text = "Введите команду:", Location = new Point(10, 15), AutoSize = true };
-        var textBox = new TextBox { Location = new Point(10, 40), Size = new Size(410, 25) };
-        var okButton = new Button { Text = "Отправить", DialogResult = DialogResult.OK, Location = new Point(250, 75), Size = new Size(80, 30) };
-        var cancelButton = new Button { Text = "Отмена", DialogResult = DialogResult.Cancel, Location = new Point(340, 75), Size = new Size(80, 30) };
-        inputForm.Controls.AddRange(new Control[] { label, textBox, okButton, cancelButton });
-        inputForm.AcceptButton = okButton;
-        inputForm.CancelButton = cancelButton;
-        if (inputForm.ShowDialog() != DialogResult.OK) return;
-        var command = textBox.Text.Trim();
-        if (string.IsNullOrWhiteSpace(command)) return;
-        string response;
-        var success = _rconService.SendCommand(server, command, out response);
-        var message = success ? "Команда выполнена.\n\nОтвет:\n" + response : "Ошибка отправки команды.";
-        MessageBox.Show(message, "RCON", MessageBoxButtons.OK, success ? MessageBoxIcon.Information : MessageBoxIcon.Error);
-    }
-
-    private async void BtnUpdate_Click(object? sender, EventArgs e)
-    {
-        Cursor = Cursors.WaitCursor;
-        var result = await _updateService.CheckForUpdatesAsync();
-        Cursor = Cursors.Default;
-        MessageBox.Show(result, "Проверка обновлений", MessageBoxButtons.OK, MessageBoxIcon.Information);
-    }
-
-    private void BtnReload_Click(object? sender, EventArgs e)
-    {
-        var result = MessageBox.Show("Перечитать конфигурацию?\nВсе запущенные серверы будут остановлены.", "Перечитать конфигурацию", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
-        if (result != DialogResult.Yes) return;
-        _manager.StopAll();
-        _manager.LoadServers();
-        RefreshData();
-        MessageBox.Show("Конфигурация перечитана.", "Готово", MessageBoxButtons.OK, MessageBoxIcon.Information);
-    }
-}
+        var server = _
