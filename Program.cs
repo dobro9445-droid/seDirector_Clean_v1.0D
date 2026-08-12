@@ -183,4 +183,156 @@ public static class Program
         Console.WriteLine("Лимит перезапусков:     " + server.MaxRestartAttempts);
         Console.WriteLine("Остановлен вручную:     " + (manager.IsManualStopped(index.Value) ? "да" : "нет"));
         Console.WriteLine("Статус:                 " + manager.GetStatus(index.Value));
-        Console.WriteLine("Аптайм
+                Console.WriteLine("Аптайм:                 " + manager.GetUptime(index.Value));
+        Console.WriteLine("Память:                 " + manager.GetMemoryUsage(index.Value));
+    }
+
+    private static void BackupSingleServer(ServerManager manager, BackupService backupService)
+    {
+        var index = SelectServerIndex(manager, "Резервная копия сервера");
+        if (index == null) return;
+        Console.WriteLine();
+        Console.Write("Создать резервную копию этого сервера? (y/N): ");
+        if (!Confirm()) { Console.WriteLine("Отменено."); return; }
+        Console.WriteLine("Создание резервной копии...");
+        var success = backupService.BackupServer(manager.Servers[index.Value]);
+        Console.WriteLine(success ? "Резервная копия создана." : "Не удалось создать резервную копию.");
+    }
+
+    private static void BackupAllServers(ServerManager manager, BackupService backupService)
+    {
+        ClearScreen();
+        Console.WriteLine("=== Резервное копирование всех серверов ===");
+        Console.WriteLine("Будут скопированы только серверы с Backup.Enabled = true.");
+        Console.Write("Продолжить? (y/N): ");
+        if (!Confirm()) { Console.WriteLine("Отменено."); return; }
+        Console.WriteLine("Создание резервных копий...");
+        var count = backupService.BackupAll(manager.Servers);
+        Console.WriteLine("Создано резервных копий: " + count);
+    }
+
+    private static void SendRconCommand(ServerManager manager, RconService rconService)
+    {
+        var index = SelectServerIndex(manager, "Отправить RCON команду");
+        if (index == null) return;
+        var server = manager.Servers[index.Value];
+        Console.WriteLine();
+        Console.Write("Введите команду для сервера '" + server.Name + "': ");
+        var command = Console.ReadLine();
+        if (string.IsNullOrWhiteSpace(command)) { Console.WriteLine("Команда не может быть пустой."); return; }
+        Console.WriteLine("Отправка команды...");
+        string response;
+        var success = rconService.SendCommand(server, command, out response);
+        Console.WriteLine();
+        Console.WriteLine("Результат: " + (success ? "Успешно" : "Ошибка"));
+        if (!string.IsNullOrWhiteSpace(response)) { Console.WriteLine(); Console.WriteLine("Ответ сервера:"); Console.WriteLine(response); }
+    }
+
+    private static void UpdateServerViaSteamCmd(ServerManager manager, SteamCmdService steamCmdService)
+    {
+        var index = SelectServerIndex(manager, "Обновить сервер через SteamCMD");
+        if (index == null) return;
+        var server = manager.Servers[index.Value];
+        Console.WriteLine();
+        if (!steamCmdService.IsAvailable()) { Console.WriteLine("SteamCMD не найден."); return; }
+        if (manager.IsRunning(index.Value))
+        {
+            Console.WriteLine("Сервер запущен. Остановить и продолжить? (y/N): ");
+            if (!Confirm()) { Console.WriteLine("Отменено."); return; }
+            manager.TryStop(index.Value);
+        }
+        Console.Write("Обновить сервер '" + server.Name + "' через SteamCMD? (y/N): ");
+        if (!Confirm()) { Console.WriteLine("Отменено."); return; }
+        Console.WriteLine("Запуск SteamCMD...");
+        var success = steamCmdService.UpdateServer(server);
+        Console.WriteLine(success ? "Обновление завершено." : "Ошибка обновления.");
+    }
+
+    private static int? SelectServerIndex(ServerManager manager, string title)
+    {
+        ClearScreen();
+        Console.WriteLine("=== " + title + " ===");
+        ListServers(manager);
+        if (manager.Servers.Count == 0) return null;
+        Console.WriteLine();
+        Console.Write("Введите номер сервера (0 - отмена): ");
+        var input = Console.ReadLine();
+        if (input != null) input = input.Trim();
+        int number;
+        if (!int.TryParse(input, out number)) { Console.WriteLine("Некорректный номер сервера."); return null; }
+        if (number == 0) return null;
+        var index = number - 1;
+        if (!manager.IsValidIndex(index)) { Console.WriteLine("Сервер с таким номером не найден."); return null; }
+        return index;
+    }
+
+    private static void ShowLogs(Logger logger)
+    {
+        ClearScreen();
+        Console.WriteLine("=== Последние 100 записей лога ===");
+        Console.WriteLine();
+        var lines = logger.ReadLastLines(100);
+        if (lines.Count == 0) { Console.WriteLine("Логи пусты."); return; }
+        foreach (var line in lines) Console.WriteLine(line);
+    }
+
+    private static void ReloadConfig(ServerManager manager, MonitorService monitor, Logger logger)
+    {
+        ClearScreen();
+        Console.WriteLine("Перечитать конфигурацию servers.json?");
+        Console.WriteLine("Все запущенные серверы будут остановлены.");
+        Console.Write("Продолжить? (y/N): ");
+        if (!Confirm()) { Console.WriteLine("Отменено."); return; }
+        manager.StopAll();
+        manager.LoadServers();
+        monitor.Refresh();
+        logger.Info("Конфигурация перечитана пользователем.");
+        Console.WriteLine();
+        Console.WriteLine("Конфигурация перечитана.");
+    }
+
+    private static bool HandleExit(ServerManager manager, Logger logger)
+    {
+        ClearScreen();
+        Console.WriteLine("Вы действительно хотите выйти? (y/N)");
+        if (!Confirm()) return false;
+        Console.WriteLine("Остановить все запущенные серверы перед выходом? (y/N)");
+        if (Confirm()) { manager.StopAll(); Console.WriteLine("Все серверы остановлены."); }
+        return true;
+    }
+
+    private static bool Confirm()
+    {
+        var answer = Console.ReadLine();
+        if (answer != null) answer = answer.Trim().ToLowerInvariant();
+        return answer == "y" || answer == "yes" || answer == "д" || answer == "да";
+    }
+
+    private static void WaitKey()
+    {
+        Console.WriteLine();
+        Console.Write("Нажмите Enter для продолжения...");
+        Console.ReadLine();
+    }
+
+    private static void ClearScreen()
+    {
+        try { Console.Clear(); } catch { }
+    }
+
+    private static string Truncate(string value, int length)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+        if (value.Length <= length) return value;
+        return value.Substring(0, length);
+    }
+
+    private static async Task CheckUpdates(UpdateService updateService)
+    {
+        ClearScreen();
+        Console.WriteLine("Проверка обновлений на GitHub...");
+        var result = await updateService.CheckForUpdatesAsync();
+        Console.WriteLine();
+        Console.WriteLine(result);
+    }
+}
