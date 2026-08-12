@@ -1,7 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Threading;
-
 namespace seDirector.Core;
 
 public sealed class MonitorService : IDisposable
@@ -13,7 +9,7 @@ public sealed class MonitorService : IDisposable
     private readonly Dictionary<int, bool> _previousState = new Dictionary<int, bool>();
     private readonly HashSet<int> _autoRestartPending = new HashSet<int>();
 
-    private Timer _timer;
+    private System.Threading.Timer? _timer;
 
     public MonitorService(ServerManager manager, Logger logger)
     {
@@ -30,7 +26,7 @@ public sealed class MonitorService : IDisposable
 
             RefreshState();
 
-            _timer = new Timer(
+            _timer = new System.Threading.Timer(
                 Check,
                 null,
                 intervalMilliseconds,
@@ -60,7 +56,7 @@ public sealed class MonitorService : IDisposable
         }
     }
 
-    private void Check(object state)
+    private void Check(object? state)
     {
         if (!Monitor.TryEnter(_sync, TimeSpan.FromSeconds(2)))
             return;
