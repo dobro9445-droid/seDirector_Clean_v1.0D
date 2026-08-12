@@ -37,13 +37,13 @@ public sealed class NetworkSettingsForm : Form
         _txtExternalIP = new TextBox { Text = network.ExternalIP, Location = new Point(180, 52), Size = new Size(270, 25) };
 
         var lblGamePort = new Label { Text = "Игровой порт:", Location = new Point(15, 90), AutoSize = true };
-        _numGamePort = new NumericUpDown { Value = network.GamePort, Minimum = 1, Maximum = 65535, Location = new Point(180, 87), Size = new Size(120, 25) };
+        _numGamePort = new NumericUpDown { Minimum = 1, Maximum = 65535, Value = network.GamePort, Location = new Point(180, 87), Size = new Size(120, 25) };
 
         var lblRconPort = new Label { Text = "RCON порт:", Location = new Point(15, 125), AutoSize = true };
-        _numRconPort = new NumericUpDown { Value = network.RconPort, Minimum = 1, Maximum = 65535, Location = new Point(180, 122), Size = new Size(120, 25) };
+        _numRconPort = new NumericUpDown { Minimum = 1, Maximum = 65535, Value = network.RconPort, Location = new Point(180, 122), Size = new Size(120, 25) };
 
         var lblQueryPort = new Label { Text = "Query порт:", Location = new Point(15, 160), AutoSize = true };
-        _numQueryPort = new NumericUpDown { Value = network.QueryPort, Minimum = 1, Maximum = 65535, Location = new Point(180, 157), Size = new Size(120, 25) };
+        _numQueryPort = new NumericUpDown { Minimum = 1, Maximum = 65535, Value = network.QueryPort, Location = new Point(180, 157), Size = new Size(120, 25) };
 
         _chkUseWAN = new CheckBox { Text = "Использовать WAN режим", Location = new Point(15, 200), AutoSize = true, Checked = network.UseWAN };
 
