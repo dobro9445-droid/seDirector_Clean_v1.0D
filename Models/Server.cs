@@ -40,6 +40,27 @@ public sealed class Server
     [JsonPropertyName("SteamAppId")]
     public string? SteamAppId { get; set; }
 
+    [JsonPropertyName("MaxPlayers")]
+    public int MaxPlayers { get; set; } = 24;
+
+    [JsonPropertyName("Map")]
+    public string Map { get; set; } = string.Empty;
+
+    [JsonPropertyName("Tickrate")]
+    public int Tickrate { get; set; } = 64;
+
+    [JsonPropertyName("GameMode")]
+    public string GameMode { get; set; } = string.Empty;
+
+    [JsonPropertyName("HideConsole")]
+    public bool HideConsole { get; set; } = false;
+
+    [JsonPropertyName("AutoFindFreePort")]
+    public bool AutoFindFreePort { get; set; } = false;
+
+    [JsonPropertyName("ProcessorAffinity")]
+    public string ProcessorAffinity { get; set; } = string.Empty;
+
     [JsonPropertyName("Rcon")]
     public RconConfig? Rcon { get; set; }
 
