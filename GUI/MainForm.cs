@@ -17,7 +17,7 @@ public sealed class MainForm : Form
 
     private readonly DataGridView _grid;
     private readonly TextBox _logBox;
-    private readonly Timer _refreshTimer;
+    private readonly System.Windows.Forms.Timer _refreshTimer;
 
     public MainForm(ServerManager manager, BackupService backupService, RconService rconService,
         SteamCmdService steamCmdService, SoftStopService softStopService, UpdateService updateService, Logger logger)
@@ -113,7 +113,7 @@ public sealed class MainForm : Form
         Controls.Add(splitContainer);
         Controls.Add(topPanel);
 
-        _refreshTimer = new Timer { Interval = 3000 };
+        _refreshTimer = new System.Windows.Forms.Timer { Interval = 3000 };
         _refreshTimer.Tick += (s, e) => RefreshData();
 
         Load += (s, e) =>
@@ -164,7 +164,7 @@ public sealed class MainForm : Form
             _logBox.SelectionStart = _logBox.Text.Length;
     }
 
-    private void BtnStart_Click(object sender, EventArgs e)
+    private void BtnStart_Click(object? sender, EventArgs e)
     {
         var index = GetSelectedIndex();
         if (index < 0) return;
@@ -173,7 +173,7 @@ public sealed class MainForm : Form
         RefreshData();
     }
 
-    private void BtnStop_Click(object sender, EventArgs e)
+    private void BtnStop_Click(object? sender, EventArgs e)
     {
         var index = GetSelectedIndex();
         if (index < 0) return;
@@ -184,7 +184,7 @@ public sealed class MainForm : Form
         RefreshData();
     }
 
-    private void BtnRestart_Click(object sender, EventArgs e)
+    private void BtnRestart_Click(object? sender, EventArgs e)
     {
         var index = GetSelectedIndex();
         if (index < 0) return;
@@ -195,16 +195,15 @@ public sealed class MainForm : Form
         RefreshData();
     }
 
-    private void BtnBackup_Click(object sender, EventArgs e)
+    private void BtnBackup_Click(object? sender, EventArgs e)
     {
         var index = GetSelectedIndex();
         if (index < 0) return;
-        MessageBox.Show("Создание резервной копии...", "Бэкап", MessageBoxButtons.OK, MessageBoxIcon.Information);
         var success = _backupService.BackupServer(_manager.Servers[index]);
         MessageBox.Show(success ? "Резервная копия создана." : "Не удалось создать резервную копию.", "Результат", MessageBoxButtons.OK, success ? MessageBoxIcon.Information : MessageBoxIcon.Error);
     }
 
-    private void BtnSteam_Click(object sender, EventArgs e)
+    private void BtnSteam_Click(object? sender, EventArgs e)
     {
         var index = GetSelectedIndex();
         if (index < 0) return;
@@ -233,7 +232,7 @@ public sealed class MainForm : Form
         RefreshData();
     }
 
-    private void BtnRcon_Click(object sender, EventArgs e)
+    private void BtnRcon_Click(object? sender, EventArgs e)
     {
         var index = GetSelectedIndex();
         if (index < 0) return;
@@ -250,43 +249,4 @@ public sealed class MainForm : Form
             MinimizeBox = false
         };
 
-        var label = new Label { Text = "Введите команду:", Location = new Point(10, 15), AutoSize = true };
-        var textBox = new TextBox { Location = new Point(10, 40), Size = new Size(410, 25) };
-        var okButton = new Button { Text = "Отправить", DialogResult = DialogResult.OK, Location = new Point(250, 75), Size = new Size(80, 30) };
-        var cancelButton = new Button { Text = "Отмена", DialogResult = DialogResult.Cancel, Location = new Point(340, 75), Size = new Size(80, 30) };
-
-        inputForm.Controls.AddRange(new Control[] { label, textBox, okButton, cancelButton });
-        inputForm.AcceptButton = okButton;
-        inputForm.CancelButton = cancelButton;
-
-        if (inputForm.ShowDialog() != DialogResult.OK) return;
-
-        var command = textBox.Text.Trim();
-        if (string.IsNullOrWhiteSpace(command)) return;
-
-        string response;
-        var success = _rconService.SendCommand(server, command, out response);
-
-        var message = success ? "Команда выполнена.\n\nОтвет:\n" + response : "Ошибка отправки команды.";
-        MessageBox.Show(message, "RCON", MessageBoxButtons.OK, success ? MessageBoxIcon.Information : MessageBoxIcon.Error);
-    }
-
-    private async void BtnUpdate_Click(object sender, EventArgs e)
-    {
-        Cursor = Cursors.WaitCursor;
-        var result = await _updateService.CheckForUpdatesAsync();
-        Cursor = Cursors.Default;
-        MessageBox.Show(result, "Проверка обновлений", MessageBoxButtons.OK, MessageBoxIcon.Information);
-    }
-
-    private void BtnReload_Click(object sender, EventArgs e)
-    {
-        var result = MessageBox.Show("Перечитать конфигурацию?\nВсе запущенные серверы будут остановлены.", "Перечитать конфигурацию", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
-        if (result != DialogResult.Yes) return;
-
-        _manager.StopAll();
-        _manager.LoadServers();
-        RefreshData();
-        MessageBox.Show("Конфигурация перечитана.", "Готово", MessageBoxButtons.OK, MessageBoxIcon.Information);
-    }
-}
+        var label = new Label { Text
