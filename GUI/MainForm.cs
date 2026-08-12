@@ -14,13 +14,11 @@ public sealed class MainForm : Form
     private readonly SoftStopService _softStopService;
     private readonly UpdateService _updateService;
     private readonly Logger _logger;
-
     private readonly DataGridView _grid;
     private readonly TextBox _logBox;
     private readonly System.Windows.Forms.Timer _refreshTimer;
 
-    public MainForm(ServerManager manager, BackupService backupService, RconService rconService,
-        SteamCmdService steamCmdService, SoftStopService softStopService, UpdateService updateService, Logger logger)
+    public MainForm(ServerManager manager, BackupService backupService, RconService rconService, SteamCmdService steamCmdService, SoftStopService softStopService, UpdateService updateService, Logger logger)
     {
         _manager = manager;
         _backupService = backupService;
@@ -37,7 +35,6 @@ public sealed class MainForm : Form
         Font = new Font("Segoe UI", 9.5f);
 
         var topPanel = new Panel { Dock = DockStyle.Top, Height = 45 };
-
         var btnStart = new Button { Text = "Запустить", Location = new Point(10, 8), Size = new Size(100, 30) };
         var btnStop = new Button { Text = "Остановить", Location = new Point(115, 8), Size = new Size(100, 30) };
         var btnRestart = new Button { Text = "Перезапуск", Location = new Point(220, 8), Size = new Size(100, 30) };
@@ -78,7 +75,6 @@ public sealed class MainForm : Form
         _grid.Columns.Add("Uptime", "Аптайм");
         _grid.Columns.Add("Memory", "Память");
         _grid.Columns.Add("Path", "Путь");
-        _grid.Columns["Num"].Width = 30;
         _grid.Columns["Num"].FillWeight = 8;
         _grid.Columns["Name"].FillWeight = 20;
         _grid.Columns["Status"].FillWeight = 18;
@@ -86,12 +82,7 @@ public sealed class MainForm : Form
         _grid.Columns["Memory"].FillWeight = 12;
         _grid.Columns["Path"].FillWeight = 30;
 
-        var splitContainer = new SplitContainer
-        {
-            Dock = DockStyle.Fill,
-            Orientation = Orientation.Horizontal,
-            SplitterDistance = 350
-        };
+        var splitContainer = new SplitContainer { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal, SplitterDistance = 350 };
 
         _logBox = new TextBox
         {
@@ -116,36 +107,21 @@ public sealed class MainForm : Form
         _refreshTimer = new System.Windows.Forms.Timer { Interval = 3000 };
         _refreshTimer.Tick += (s, e) => RefreshData();
 
-        Load += (s, e) =>
-        {
-            RefreshData();
-            _refreshTimer.Start();
-        };
+        Load += (s, e) => { RefreshData(); _refreshTimer.Start(); };
 
         FormClosing += (s, e) =>
         {
             var result = MessageBox.Show("Выйти из seDirector Clean?", "Выход", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-            if (result == DialogResult.No)
-            {
-                e.Cancel = true;
-                return;
-            }
-
+            if (result == DialogResult.No) { e.Cancel = true; return; }
             var stopResult = MessageBox.Show("Остановить все запущенные серверы?", "Остановка серверов", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-            if (stopResult == DialogResult.Yes)
-                _manager.StopAll();
-
+            if (stopResult == DialogResult.Yes) _manager.StopAll();
             _refreshTimer.Stop();
         };
     }
 
     private int GetSelectedIndex()
     {
-        if (_grid.SelectedRows.Count == 0)
-        {
-            MessageBox.Show("Выберите сервер в таблице.", "Внимание", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            return -1;
-        }
+        if (_grid.SelectedRows.Count == 0) { MessageBox.Show("Выберите сервер в таблице.", "Внимание", MessageBoxButtons.OK, MessageBoxIcon.Warning); return -1; }
         return _grid.SelectedRows[0].Index;
     }
 
@@ -157,11 +133,9 @@ public sealed class MainForm : Form
             var server = _manager.Servers[i];
             _grid.Rows.Add(i + 1, server.Name, _manager.GetStatus(i), _manager.GetUptime(i), _manager.GetMemoryUsage(i), server.Path);
         }
-
         var lines = _logger.ReadLastLines(50);
         _logBox.Lines = lines.ToArray();
-        if (_logBox.Lines.Length > 0)
-            _logBox.SelectionStart = _logBox.Text.Length;
+        if (_logBox.Lines.Length > 0) _logBox.SelectionStart = _logBox.Text.Length;
     }
 
     private void BtnStart_Click(object? sender, EventArgs e)
@@ -207,27 +181,18 @@ public sealed class MainForm : Form
     {
         var index = GetSelectedIndex();
         if (index < 0) return;
-
-        if (!_steamCmdService.IsAvailable())
-        {
-            MessageBox.Show("SteamCMD не найден. Поместите steamcmd.exe в папку steamcmd рядом с программой.", "SteamCMD", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            return;
-        }
-
+        if (!_steamCmdService.IsAvailable()) { MessageBox.Show("SteamCMD не найден.", "SteamCMD", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
         if (_manager.IsRunning(index))
         {
             var stopResult = MessageBox.Show("Сервер запущен. Остановить и обновить?", "SteamCMD", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
             if (stopResult != DialogResult.Yes) return;
             _manager.TryStop(index);
         }
-
         var result = MessageBox.Show("Обновить сервер через SteamCMD?", "SteamCMD", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
         if (result != DialogResult.Yes) return;
-
         Cursor = Cursors.WaitCursor;
         var success = _steamCmdService.UpdateServer(_manager.Servers[index]);
         Cursor = Cursors.Default;
-
         MessageBox.Show(success ? "Обновление завершено." : "Ошибка обновления.", "SteamCMD", MessageBoxButtons.OK, success ? MessageBoxIcon.Information : MessageBoxIcon.Error);
         RefreshData();
     }
@@ -236,9 +201,7 @@ public sealed class MainForm : Form
     {
         var index = GetSelectedIndex();
         if (index < 0) return;
-
         var server = _manager.Servers[index];
-
         using var inputForm = new Form
         {
             Text = "RCON команда для " + server.Name,
@@ -248,5 +211,37 @@ public sealed class MainForm : Form
             MaximizeBox = false,
             MinimizeBox = false
         };
+        var label = new Label { Text = "Введите команду:", Location = new Point(10, 15), AutoSize = true };
+        var textBox = new TextBox { Location = new Point(10, 40), Size = new Size(410, 25) };
+        var okButton = new Button { Text = "Отправить", DialogResult = DialogResult.OK, Location = new Point(250, 75), Size = new Size(80, 30) };
+        var cancelButton = new Button { Text = "Отмена", DialogResult = DialogResult.Cancel, Location = new Point(340, 75), Size = new Size(80, 30) };
+        inputForm.Controls.AddRange(new Control[] { label, textBox, okButton, cancelButton });
+        inputForm.AcceptButton = okButton;
+        inputForm.CancelButton = cancelButton;
+        if (inputForm.ShowDialog() != DialogResult.OK) return;
+        var command = textBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(command)) return;
+        string response;
+        var success = _rconService.SendCommand(server, command, out response);
+        var message = success ? "Команда выполнена.\n\nОтвет:\n" + response : "Ошибка отправки команды.";
+        MessageBox.Show(message, "RCON", MessageBoxButtons.OK, success ? MessageBoxIcon.Information : MessageBoxIcon.Error);
+    }
 
-        var label = new Label { Text
+    private async void BtnUpdate_Click(object? sender, EventArgs e)
+    {
+        Cursor = Cursors.WaitCursor;
+        var result = await _updateService.CheckForUpdatesAsync();
+        Cursor = Cursors.Default;
+        MessageBox.Show(result, "Проверка обновлений", MessageBoxButtons.OK, MessageBoxIcon.Information);
+    }
+
+    private void BtnReload_Click(object? sender, EventArgs e)
+    {
+        var result = MessageBox.Show("Перечитать конфигурацию?\nВсе запущенные серверы будут остановлены.", "Перечитать конфигурацию", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+        if (result != DialogResult.Yes) return;
+        _manager.StopAll();
+        _manager.LoadServers();
+        RefreshData();
+        MessageBox.Show("Конфигурация перечитана.", "Готово", MessageBoxButtons.OK, MessageBoxIcon.Information);
+    }
+}
